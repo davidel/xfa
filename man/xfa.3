@@ -1,0 +1,474 @@
+.\"
+.\"  XFA by Davide Libenzi ( Finite Automata library )
+.\"  Copyright (C) 2000  Davide Libenzi
+.\"
+.\"  This library is free software; you can redistribute it and/or
+.\"  modify it under the terms of the GNU Lesser General Public
+.\"  License as published by the Free Software Foundation; either
+.\"  version 2.1 of the License, or (at your option) any later version.
+.\"
+.\"  This library is distributed in the hope that it will be useful,
+.\"  but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\"  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+.\"  Lesser General Public License for more details.
+.\"
+.\"  You should have received a copy of the GNU Lesser General Public
+.\"  License along with this library; if not, write to the Free Software
+.\"  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+.\"
+.\"  Davide Libenzi <davidel@xmailserver.org>
+.\"
+.na
+.TH XFA 3 "0.18" "GNU" "Finite Automata Library"
+.SH NAME
+
+xfa_alloc_trans, xfa_free_trans, xfa_alloc_state, xfa_free_state, xfa_free_attr,
+xfa_do_once, xfa_nfa2dfa, xfa_label_states, xfa_dfa_minimize, xfa_re2nfa
+
+.SH SYNOPSIS
+.nf
+.B #include <xfa.h>
+.sp
+.BI "xfa_trans_t *xfa_alloc_trans(xfa_system_t *" sys ", unsigned long const *" map ", unsigned long " flags ", xfa_state_t *" from ", xfa_state_t *" to " );"
+.nl
+.BI "void xfa_free_trans(xfa_system_t *" sys ", xfa_trans_t *" trn ");"
+.nl
+.BI "xfa_state_t *xfa_alloc_state(xfa_system_t *" sys ", int " phsize ");"
+.nl
+.BI "void xfa_free_state(xfa_system_t *" sys ", xfa_state_t *" stt ", int " recurse ");"
+.nl
+.BI "void xfa_free_attr(xfa_system_t *" sys ", xfa_attr_t *" attr ");"
+.nl
+.BI "int xfa_do_once(xfa_system_t *" sys ", xfa_state_t *" stt ", int (*" dproc ") (void *, xfa_system_t *, xfa_state_t *), void *" priv ");"
+.nl
+.BI "xfa_state_t *xfa_nfa2dfa(xfa_system_t *" sys ", xfa_state_t *" stt ");"
+.nl
+.BI "int xfa_label_states(xfa_system_t *" sys ", xfa_state_t *" stt ", unsigned long *" label ");"
+.nl
+.BI "int xfa_dfa_minimize(xfa_system_t *" sys ", xfa_state_t *" stt ");"
+.nl
+.BI "int xfa_re2nfa(xfa_system_t *" sys ", xfa_state_t **" csts ", xfa_state_t **" cste ", unsigned char const **" ptr ");"
+
+.SH DESCRIPTION
+The
+.B XFA
+library is a Finite Automata (FA) library to handle tasks like building (programmatically
+or from regular expressions), converting NFA (Non-deterministic FA) to DFA (Deterministic FA) 
+and reducing FA graphs. The library relies only on the availability of an ANSI C
+compiler, and in this way can be used in almost every system (from embedded devices
+to servers). The
+.B XFA
+library uses the concepts of
+.I state
+and
+.I transaction
+to define an arbitrarly complex FA graph, where
+.I states
+are connected by
+.IR transactions .
+The library supply both low level graph building capabilities and regular expression
+driven graph construction. The complexity of the graphs that are treatable
+by the
+.B XFA
+library is only limited by the amount of available memory.
+
+
+.SS Structures
+The following structures are defined:
+.TP
+.BI xfa_system_t
+
+.nf
+	typedef struct s_xfa_system {
+		void *priv;
+		void *(*alloc) (void *, int);
+		void (*free) (void *, void *);
+		void (*error) (void *, int);
+	} xfa_system_t;
+.fi
+
+The
+.B xfa_system_t
+structure define the system interface for the
+.B XFA
+library. It is caller responsibility to fill up the members of the structure
+with the proper functions pointers that matches the host where the
+.B XFA
+library is running. The
+.I priv
+member of the
+.B xfa_system_t
+structure is an opaque pointer that is passed to all the system functions
+as first parameter. This can be used by the system function as "context" for
+the proper handling and re-entrancy of the system code. The
+.IR alloc( priv , size )
+function is used to allocate memory. The function accepts an integer parameter
+that represent the size of the memory block that has to be allocated. The
+.IR alloc( priv , size )
+function returns a pointer to the newly allocated memory block, or
+.B NULL
+in case of error. The
+.IR free( priv , data )
+function is called to free memory blocks allocated using the
+.IR alloc( priv , size )
+function. It is possible to pass
+.B NULL
+to
+.IR free( priv , data ) ,
+and in that case no real free should be performed. The function
+.IR error( priv , errno )
+is used by the
+.B XFA
+library to set an error code for a failing
+.B XFA
+operation.
+
+.TP
+.BI xfa_state_t
+
+.nf
+	typedef struct s_xfa_state {
+		struct ll_list_head tlist;
+		struct ll_list_head flist;
+		xfa_ptrhash_t sh;
+		unsigned long flags;
+		unsigned long label;
+		struct ll_list_head alist;
+	} xfa_state_t;
+.fi
+
+The
+.B xfa_state_t
+structure describe a state inside the FA. The
+.I tlist
+list is a
+.I struct ll_list_head
+structure that is used to links all the transactions that leave the current state.
+The
+.I flist
+list is a
+list is a
+.I struct ll_list_head
+structure that is used to links all the transactions that arrive to the current state.
+The
+.I sh
+field is a
+.I xfa_ptrhash_t
+structure that is used during the NFA to DFA conversion, to accumulate all
+the states reachable by EPS transactions. The
+.I flags
+field is a bitfield that lists all the flags associated with the state.
+The following flags are defined for the
+.I flags
+field:
+.br
+.IP
+.B XFASF_START
+This is the start of the FA graph
+.IP
+.B XFASF_TARGET
+This is the target of the FA graph
+
+The
+.I alist
+field is a
+.I struct ll_list_head
+that links all the attributes of the state. Attributes are defined using the
+.I xfa_attr_t
+structure.
+
+.TP
+.BI xfa_trans_t
+
+.nf
+	typedef struct s_xfa_trans {
+		struct ll_list_head tlink;
+		struct ll_list_head flink;
+		unsigned long *map;
+		unsigned long flags;
+		struct s_xfa_state *to;
+		struct s_xfa_state *from;
+	} xfa_trans_t;
+.fi
+
+The
+.B xfa_trans_t
+structure defines a transaction inside the FA graph. One transaction connects
+two FA states, if one of the events described inside the
+.B xfa_trans_t
+(or the "empty" EPS event) becomes true. The
+.I tlink
+field is used to link the
+.B xfa_trans_t
+structure to the destination state, whereas the
+.I flink
+field is used to link the
+.B xfa_trans_t
+to the origin state. The
+.I map
+field is a 256 bits wide bitmap that lists all the events that would trigger
+the transaction. For example, if the byte 0x10 is received while in the origin
+state, the bit 0x10 of the
+.I map
+bitmap is checked and if found set, the transaction is executed. For EPS transactions
+(inside NFA graphs), the
+.I map
+field can be
+.BR NULL .
+The
+.I flags
+field stores a bitmask of all the active flags for the transaction. The following flags
+are defined for the
+.I flags
+field:
+.br
+.IP
+.B XFATF_EPSTRANS
+This tells that the transaction is an "epmty" EPS transaction
+
+The
+.I to
+field is a pointer (of
+.B xfa_state_t
+type) to the destination state of the transaction, whereas the
+.I from
+field is a pointer (of
+.B xfa_state_t
+type) to the origin state of the transaction.
+
+.TP
+.BI xfa_attr_t
+
+.nf
+	typedef struct s_xfa_attr {
+		struct ll_list_head link;
+		int type;
+		void (*free) (xfa_system_t *, void *);
+		void *adata;
+	} xfa_attr_t;
+.fi
+
+The
+.B xfa_attr_t
+structure desribe a generic attribute data that can be associated with a given state.
+The
+.I link
+field is used to link the attribute
+.B xfa_attr_t
+structure to the
+.I alist
+field of the
+.B xfa_state_t
+structure. The
+.I type
+field is a number that identifies that attribute type. In normal situations,
+different numbers will correspond to different types, whose data will be stored
+inside the
+.I adata
+field of the
+.B xfa_attr_t
+structure. The
+.IR free( xsys , data )
+field is a pointer to an optional function that can be used to perform complex
+cleanup of the
+.I adata
+allocations.
+
+
+.SS Functions
+The following functions are defined:
+.TP
+.BI "xfa_trans_t *xfa_alloc_trans(xfa_system_t *" sys ", unsigned long const *" map ", unsigned long " flags ", xfa_state_t *" from ", xfa_state_t *" to " );"
+
+Allocates a transaction structure. The
+.I sys
+parameter is the system interface to be used by the
+.B xfa_alloc_trans
+implementation. The
+.I map
+parameter is a pointer to
+.B XFA_TRANSMAP_ULONGS
+unsigned longs whose bits define the events that will trigger the transaction.
+If bit N (from 0 to 255) is set inside the
+.I map
+bitmap, the byte with numeric value N will trigger the transaction. The
+.I flags
+parameter specify the flags for the transaction. The following flags are defined for the
+.I flags
+parameter:
+.br
+.IP
+.B XFATF_EPSTRANS
+This tells that the transaction is an "epmty" EPS transaction. In this case the
+.I map
+parameter will be ignored.
+
+The
+.I from
+parameter specify the starting state of the transaction, whereas the
+.I to
+parameter specify the destination state of the transaction. The
+.B xfa_alloc_trans
+function returns a pointer to the newly allocated transaction, or
+.B NULL
+if an error occurred.
+
+.TP
+.BI "void xfa_free_trans(xfa_system_t *" sys ", xfa_trans_t *" trn ");"
+
+Frees the transaction pointed by the
+.I trn
+parameter, using the
+.I sys
+system interface.
+
+.TP
+.BI "xfa_state_t *xfa_alloc_state(xfa_system_t *" sys ", int " phsize ");"
+
+Allocates a new state using the system interface passed in the
+.I sys
+parameter. The
+.I phsize
+parameter defines the initial size of the
+.I sh
+hash used during the NFA to DFA conversion to accumulate all the states reachable
+by EPS transactions. The constant
+.B XFA_DEF_PHASH_SIZE
+can be used as default, since the hash is automatically resized in any case.
+The
+.B xfa_alloc_state
+returns a pointer to the newly allocated state, or
+.B NULL
+in case of error.
+
+.TP
+.BI "void xfa_free_state(xfa_system_t *" sys ", xfa_state_t *" stt ", int " recurse ");"
+
+Frees the state pointed by the
+.I stt
+parameter, using the system interface passed in the
+.I sys
+parameter. The
+.B xfa_free_state
+function also frees all the orphaned transactions that leaves/arrives the
+currently freed state. If the
+.I recurse
+parameter is specified, the
+.B xfa_free_state
+function will recurse and free all the nodes that are reachable from
+.I stt
+(recursively).
+
+.TP
+.BI "void xfa_free_attr(xfa_system_t *" sys ", xfa_attr_t *" attr ");"
+
+Frees the attribute pointed by
+.I attr
+using the system interface passed in the
+.I sys
+parameter.
+
+.TP
+.BI "int xfa_do_once(xfa_system_t *" sys ", xfa_state_t *" stt ", int (*" dproc ") (void *, xfa_system_t *, xfa_state_t *), void *" priv ");"
+
+Recurse through all the states reachable from the state
+.I stt
+and call the function
+.I dproc
+once per state in the reachable graph. The
+.I sys
+parameter is a pointer to the system interface, whereas the
+.I priv
+parameter is an opaque pointer that is passed to
+.I dproc
+during the state enumeration (first parameter). The second parameter passed to
+.I dproc
+is the system interface pointer, and the third one is a pointer to the
+currently reached state. The
+.B xfa_do_once
+function returns 0 if succeeded, or -1 if an error occurred.
+
+.TP
+.BI "xfa_state_t *xfa_nfa2dfa(xfa_system_t *" sys ", xfa_state_t *" stt ");"
+
+Create a DFA graph from the NFA graph whose starting state is passed in the
+.I stt
+parameter. The
+.I sys
+parameter is a pointer to the system interface. The
+.B xfa_nfa2dfa
+functionre turns a pointer to the starting state of the resulting DFA graph,
+or
+.B NULL
+in case of error.
+
+.TP
+.BI "int xfa_label_states(xfa_system_t *" sys ", xfa_state_t *" stt ", unsigned long *" label ");"
+
+The
+.B xfa_label_states
+function assign a unique label to each state of the graph whose starting state is passed in the
+.I stt
+parameter. The
+.I label
+parameter is a pointer to an unsigned long that will be updated for every assigned label.
+The starting value of *label will be the first assigned. The
+.I sys
+parameter is the system interface pointer. The function return 0 if succeded, or -1
+in case of error.
+
+.TP
+.BI "int xfa_dfa_minimize(xfa_system_t *" sys ", xfa_state_t *" stt ");"
+
+The
+.B xfa_dfa_minimize
+function minimizes the DFA graph whose starting state is passed in the
+.I stt
+parameter. The
+.I sys
+parameter is the system interface pointer. The function returns 0 in case of success,
+or -1 if an error occurred.
+
+.TP
+.BI "int xfa_re2nfa(xfa_system_t *" sys ", xfa_state_t **" csts ", xfa_state_t **" cste ", unsigned char const **" ptr ");"
+
+Creates an NFA graph from a regular expression. the system interface is passed in the
+.I sys
+parameter. The resulting graph starting state is returned in
+.I csts
+while the resulting graph ending state is returned in
+.IR cste .
+The regular expression is passed in the
+.I ptr
+parameter (the string pointed by *ptr) that, at the end, will be set to point
+to the next character after the end of the regular expression.
+A full regular expression syntax is supported by the
+.B xfa_re2nfa
+implementation. The function returns 0 in case of success, or -1 in case of error.
+
+
+
+.SH LICENSE
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+A copy of the license is available at :
+
+.BR http://www.gnu.org/copyleft/lesser.html
+
+.SH AUTHOR
+Developed by Davide Libenzi
+.RB < davidel@xmailserver.org >
+
+.SH AVAILABILITY
+The latest version of
+.B XFA
+can be found at :
+
+.BR http://www.xmailserver.org/xfa-lib.html
+
+.SH BUGS
+There are no known bugs.  Bug reports and comments to Davide Libenzi
+.RB < davidel@xmailserver.org >
+

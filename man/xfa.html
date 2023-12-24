@@ -1,0 +1,637 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML><HEAD><TITLE>Man page of XFA</TITLE>
+</HEAD><BODY text="#0000FF" bgcolor="#FFFFFF" style="font-family: monospace;">
+<H1>XFA</H1>
+Section: Finite Automata Library (3)<BR>Updated: 0.18<BR><A HREF="#index">Index</A>
+<A HREF="/cgi-bin/man/man2html">Return to Main Contents</A><HR>
+
+<A NAME="lbAB">&nbsp;</A>
+<H2>NAME</H2>
+
+<P>
+xfa_alloc_trans, xfa_free_trans, xfa_alloc_state, xfa_free_state, xfa_free_attr,
+xfa_do_once, xfa_nfa2dfa, xfa_label_states, xfa_dfa_minimize, xfa_re2nfa
+<P>
+<A NAME="lbAC">&nbsp;</A>
+<H2>SYNOPSIS</H2>
+
+<PRE>
+<B>#include &lt;<A HREF="file:///usr/include/xfa.h">xfa.h</A>&gt;</B>
+
+<B>xfa_trans_t *xfa_alloc_trans(xfa_system_t *</B><I>sys</I><B>, unsigned long const *</B><I>map</I><B>, unsigned long </B><I>flags</I><B>, xfa_state_t *</B><I>from</I><B>, xfa_state_t *</B><I>to</I><B> );</B>
+<B>void xfa_free_trans(xfa_system_t *</B><I>sys</I><B>, xfa_trans_t *</B><I>trn</I><B>);</B>
+<B>xfa_state_t *xfa_alloc_state(xfa_system_t *</B><I>sys</I><B>, int </B><I>phsize</I><B>);</B>
+<B>void xfa_free_state(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>, int </B><I>recurse</I><B>);</B>
+<B>void xfa_free_attr(xfa_system_t *</B><I>sys</I><B>, xfa_attr_t *</B><I>attr</I><B>);</B>
+<B>int xfa_do_once(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>, int (*</B><I>dproc</I><B>) (void *, xfa_system_t *, xfa_state_t *), void *</B><I>priv</I><B>);</B>
+<B>xfa_state_t *xfa_nfa2dfa(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>);</B>
+<B>int xfa_label_states(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>, unsigned long *</B><I>label</I><B>);</B>
+<B>int xfa_dfa_minimize(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>);</B>
+<B>int xfa_re2nfa(xfa_system_t *</B><I>sys</I><B>, xfa_state_t **</B><I>csts</I><B>, xfa_state_t **</B><I>cste</I><B>, unsigned char const **</B><I>ptr</I><B>);</B>
+
+</PRE><A NAME="lbAD">&nbsp;</A>
+<H2>DESCRIPTION</H2>
+
+The
+<B>XFA</B>
+
+library is a Finite Automata (FA) library to handle tasks like building (programmatically
+or from regular expressions), converting NFA (Non-deterministic FA) to DFA (Deterministic FA) 
+and reducing FA graphs. The library relies only on the availability of an ANSI C
+compiler, and in this way can be used in almost every system (from embedded devices
+to servers). The
+<B>XFA</B>
+
+library uses the concepts of
+<I>state</I>
+
+and
+<I>transaction</I>
+
+to define an arbitrarly complex FA graph, where
+<I>states</I>
+
+are connected by
+<I>transactions</I>.
+
+The library supply both low level graph building capabilities and regular expression
+driven graph construction. The complexity of the graphs that are treatable
+by the
+<B>XFA</B>
+
+library is only limited by the amount of available memory.
+<P>
+<P>
+<A NAME="lbAE">&nbsp;</A>
+<H3>Structures</H3>
+
+The following structures are defined:
+<DL COMPACT>
+<DT><B>xfa_system_t</B>
+
+<DD>
+<P>
+<PRE>
+        typedef struct s_xfa_system {
+                void *priv;
+                void *(*alloc) (void *, int);
+                void (*free) (void *, void *);
+                void (*error) (void *, int);
+        } xfa_system_t;
+</PRE>
+
+<P>
+The
+<B>xfa_system_t</B>
+
+structure define the system interface for the
+<B>XFA</B>
+
+library. It is caller responsibility to fill up the members of the structure
+with the proper functions pointers that matches the host where the
+<B>XFA</B>
+
+library is running. The
+<I>priv</I>
+
+member of the
+<B>xfa_system_t</B>
+
+structure is an opaque pointer that is passed to all the system functions
+as first parameter. This can be used by the system function as &quot;context&quot; for
+the proper handling and re-entrancy of the system code. The
+<I>alloc(</I>priv<I>,</I>size<I>)</I>
+
+function is used to allocate memory. The function accepts an integer parameter
+that represent the size of the memory block that has to be allocated. The
+<I>alloc(</I>priv<I>,</I>size<I>)</I>
+
+function returns a pointer to the newly allocated memory block, or
+<B>NULL</B>
+
+in case of error. The
+<I>free(</I>priv<I>,</I>data<I>)</I>
+
+function is called to free memory blocks allocated using the
+<I>alloc(</I>priv<I>,</I>size<I>)</I>
+
+function. It is possible to pass
+<B>NULL</B>
+
+to
+<I>free(</I>priv<I>,</I>data<I>)</I>,
+
+and in that case no real free should be performed. The function
+<I>error(</I>priv<I>,</I>errno<I>)</I>
+
+is used by the
+<B>XFA</B>
+
+library to set an error code for a failing
+<B>XFA</B>
+
+operation.
+<P>
+<DT><B>xfa_state_t</B>
+
+<DD>
+<P>
+<PRE>
+        typedef struct s_xfa_state {
+                struct ll_list_head tlist;
+                struct ll_list_head flist;
+                xfa_ptrhash_t sh;
+                unsigned long flags;
+                unsigned long label;
+                struct ll_list_head alist;
+        } xfa_state_t;
+</PRE>
+
+<P>
+The
+<B>xfa_state_t</B>
+
+structure describe a state inside the FA. The
+<I>tlist</I>
+
+list is a
+<I>struct ll_list_head</I>
+
+structure that is used to links all the transactions that leave the current state.
+The
+<I>flist</I>
+
+list is a
+list is a
+<I>struct ll_list_head</I>
+
+structure that is used to links all the transactions that arrive to the current state.
+The
+<I>sh</I>
+
+field is a
+<I>xfa_ptrhash_t</I>
+
+structure that is used during the NFA to DFA conversion, to accumulate all
+the states reachable by EPS transactions. The
+<I>flags</I>
+
+field is a bitfield that lists all the flags associated with the state.
+The following flags are defined for the
+<I>flags</I>
+
+field:
+<BR>
+
+<DT><DD>
+<B>XFASF_START</B>
+
+This is the start of the FA graph
+<DT><DD>
+<B>XFASF_TARGET</B>
+
+This is the target of the FA graph
+<P>
+The
+<I>alist</I>
+
+field is a
+<I>struct ll_list_head</I>
+
+that links all the attributes of the state. Attributes are defined using the
+<I>xfa_attr_t</I>
+
+structure.
+<P>
+<DT><B>xfa_trans_t</B>
+
+<DD>
+<P>
+<PRE>
+        typedef struct s_xfa_trans {
+                struct ll_list_head tlink;
+                struct ll_list_head flink;
+                unsigned long *map;
+                unsigned long flags;
+                struct s_xfa_state *to;
+                struct s_xfa_state *from;
+        } xfa_trans_t;
+</PRE>
+
+<P>
+The
+<B>xfa_trans_t</B>
+
+structure defines a transaction inside the FA graph. One transaction connects
+two FA states, if one of the events described inside the
+<B>xfa_trans_t</B>
+
+(or the &quot;empty&quot; EPS event) becomes true. The
+<I>tlink</I>
+
+field is used to link the
+<B>xfa_trans_t</B>
+
+structure to the destination state, whereas the
+<I>flink</I>
+
+field is used to link the
+<B>xfa_trans_t</B>
+
+to the origin state. The
+<I>map</I>
+
+field is a 256 bits wide bitmap that lists all the events that would trigger
+the transaction. For example, if the byte 0x10 is received while in the origin
+state, the bit 0x10 of the
+<I>map</I>
+
+bitmap is checked and if found set, the transaction is executed. For EPS transactions
+(inside NFA graphs), the
+<I>map</I>
+
+field can be
+<B>NULL</B>.
+
+The
+<I>flags</I>
+
+field stores a bitmask of all the active flags for the transaction. The following flags
+are defined for the
+<I>flags</I>
+
+field:
+<BR>
+
+<DT><DD>
+<B>XFATF_EPSTRANS</B>
+
+This tells that the transaction is an &quot;epmty&quot; EPS transaction
+<P>
+The
+<I>to</I>
+
+field is a pointer (of
+<B>xfa_state_t</B>
+
+type) to the destination state of the transaction, whereas the
+<I>from</I>
+
+field is a pointer (of
+<B>xfa_state_t</B>
+
+type) to the origin state of the transaction.
+<P>
+<DT><B>xfa_attr_t</B>
+
+<DD>
+<P>
+<PRE>
+        typedef struct s_xfa_attr {
+                struct ll_list_head link;
+                int type;
+                void (*free) (xfa_system_t *, void *);
+                void *adata;
+        } xfa_attr_t;
+</PRE>
+
+<P>
+The
+<B>xfa_attr_t</B>
+
+structure desribe a generic attribute data that can be associated with a given state.
+The
+<I>link</I>
+
+field is used to link the attribute
+<B>xfa_attr_t</B>
+
+structure to the
+<I>alist</I>
+
+field of the
+<B>xfa_state_t</B>
+
+structure. The
+<I>type</I>
+
+field is a number that identifies that attribute type. In normal situations,
+different numbers will correspond to different types, whose data will be stored
+inside the
+<I>adata</I>
+
+field of the
+<B>xfa_attr_t</B>
+
+structure. The
+<I>free(</I>xsys<I>,</I>data<I>)</I>
+
+field is a pointer to an optional function that can be used to perform complex
+cleanup of the
+<I>adata</I>
+
+allocations.
+<P>
+<P>
+</DL>
+<A NAME="lbAF">&nbsp;</A>
+<H3>Functions</H3>
+
+The following functions are defined:
+<DL COMPACT>
+<DT><B>xfa_trans_t *xfa_alloc_trans(xfa_system_t *</B><I>sys</I><B>, unsigned long const *</B><I>map</I><B>, unsigned long </B><I>flags</I><B>, xfa_state_t *</B><I>from</I><B>, xfa_state_t *</B><I>to</I><B> );</B>
+
+<DD>
+<P>
+Allocates a transaction structure. The
+<I>sys</I>
+
+parameter is the system interface to be used by the
+<B>xfa_alloc_trans</B>
+
+implementation. The
+<I>map</I>
+
+parameter is a pointer to
+<B>XFA_TRANSMAP_ULONGS</B>
+
+unsigned longs whose bits define the events that will trigger the transaction.
+If bit N (from 0 to 255) is set inside the
+<I>map</I>
+
+bitmap, the byte with numeric value N will trigger the transaction. The
+<I>flags</I>
+
+parameter specify the flags for the transaction. The following flags are defined for the
+<I>flags</I>
+
+parameter:
+<BR>
+
+<DT><DD>
+<B>XFATF_EPSTRANS</B>
+
+This tells that the transaction is an &quot;epmty&quot; EPS transaction. In this case the
+<I>map</I>
+
+parameter will be ignored.
+<P>
+The
+<I>from</I>
+
+parameter specify the starting state of the transaction, whereas the
+<I>to</I>
+
+parameter specify the destination state of the transaction. The
+<B>xfa_alloc_trans</B>
+
+function returns a pointer to the newly allocated transaction, or
+<B>NULL</B>
+
+if an error occurred.
+<P>
+<DT><B>void xfa_free_trans(xfa_system_t *</B><I>sys</I><B>, xfa_trans_t *</B><I>trn</I><B>);</B>
+
+<DD>
+<P>
+Frees the transaction pointed by the
+<I>trn</I>
+
+parameter, using the
+<I>sys</I>
+
+system interface.
+<P>
+<DT><B>xfa_state_t *xfa_alloc_state(xfa_system_t *</B><I>sys</I><B>, int </B><I>phsize</I><B>);</B>
+
+<DD>
+<P>
+Allocates a new state using the system interface passed in the
+<I>sys</I>
+
+parameter. The
+<I>phsize</I>
+
+parameter defines the initial size of the
+<I>sh</I>
+
+hash used during the NFA to DFA conversion to accumulate all the states reachable
+by EPS transactions. The constant
+<B>XFA_DEF_PHASH_SIZE</B>
+
+can be used as default, since the hash is automatically resized in any case.
+The
+<B>xfa_alloc_state</B>
+
+returns a pointer to the newly allocated state, or
+<B>NULL</B>
+
+in case of error.
+<P>
+<DT><B>void xfa_free_state(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>, int </B><I>recurse</I><B>);</B>
+
+<DD>
+<P>
+Frees the state pointed by the
+<I>stt</I>
+
+parameter, using the system interface passed in the
+<I>sys</I>
+
+parameter. The
+<B>xfa_free_state</B>
+
+function also frees all the orphaned transactions that leaves/arrives the
+currently freed state. If the
+<I>recurse</I>
+
+parameter is specified, the
+<B>xfa_free_state</B>
+
+function will recurse and free all the nodes that are reachable from
+<I>stt</I>
+
+(recursively).
+<P>
+<DT><B>void xfa_free_attr(xfa_system_t *</B><I>sys</I><B>, xfa_attr_t *</B><I>attr</I><B>);</B>
+
+<DD>
+<P>
+Frees the attribute pointed by
+<I>attr</I>
+
+using the system interface passed in the
+<I>sys</I>
+
+parameter.
+<P>
+<DT><B>int xfa_do_once(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>, int (*</B><I>dproc</I><B>) (void *, xfa_system_t *, xfa_state_t *), void *</B><I>priv</I><B>);</B>
+
+<DD>
+<P>
+Recurse through all the states reachable from the state
+<I>stt</I>
+
+and call the function
+<I>dproc</I>
+
+once per state in the reachable graph. The
+<I>sys</I>
+
+parameter is a pointer to the system interface, whereas the
+<I>priv</I>
+
+parameter is an opaque pointer that is passed to
+<I>dproc</I>
+
+during the state enumeration (first parameter). The second parameter passed to
+<I>dproc</I>
+
+is the system interface pointer, and the third one is a pointer to the
+currently reached state. The
+<B>xfa_do_once</B>
+
+function returns 0 if succeeded, or -1 if an error occurred.
+<P>
+<DT><B>xfa_state_t *xfa_nfa2dfa(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>);</B>
+
+<DD>
+<P>
+Create a DFA graph from the NFA graph whose starting state is passed in the
+<I>stt</I>
+
+parameter. The
+<I>sys</I>
+
+parameter is a pointer to the system interface. The
+<B>xfa_nfa2dfa</B>
+
+functionre turns a pointer to the starting state of the resulting DFA graph,
+or
+<B>NULL</B>
+
+in case of error.
+<P>
+<DT><B>int xfa_label_states(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>, unsigned long *</B><I>label</I><B>);</B>
+
+<DD>
+<P>
+The
+<B>xfa_label_states</B>
+
+function assign a unique label to each state of the graph whose starting state is passed in the
+<I>stt</I>
+
+parameter. The
+<I>label</I>
+
+parameter is a pointer to an unsigned long that will be updated for every assigned label.
+The starting value of *label will be the first assigned. The
+<I>sys</I>
+
+parameter is the system interface pointer. The function return 0 if succeded, or -1
+in case of error.
+<P>
+<DT><B>int xfa_dfa_minimize(xfa_system_t *</B><I>sys</I><B>, xfa_state_t *</B><I>stt</I><B>);</B>
+
+<DD>
+<P>
+The
+<B>xfa_dfa_minimize</B>
+
+function minimizes the DFA graph whose starting state is passed in the
+<I>stt</I>
+
+parameter. The
+<I>sys</I>
+
+parameter is the system interface pointer. The function returns 0 in case of success,
+or -1 if an error occurred.
+<P>
+<DT><B>int xfa_re2nfa(xfa_system_t *</B><I>sys</I><B>, xfa_state_t **</B><I>csts</I><B>, xfa_state_t **</B><I>cste</I><B>, unsigned char const **</B><I>ptr</I><B>);</B>
+
+<DD>
+<P>
+Creates an NFA graph from a regular expression. the system interface is passed in the
+<I>sys</I>
+
+parameter. The resulting graph starting state is returned in
+<I>csts</I>
+
+while the resulting graph ending state is returned in
+<I>cste</I>.
+
+The regular expression is passed in the
+<I>ptr</I>
+
+parameter (the string pointed by *ptr) that, at the end, will be set to point
+to the next character after the end of the regular expression.
+A full regular expression syntax is supported by the
+<B>xfa_re2nfa</B>
+
+implementation. The function returns 0 in case of success, or -1 in case of error.
+<P>
+<P>
+<P>
+</DL>
+<A NAME="lbAG">&nbsp;</A>
+<H2>LICENSE</H2>
+
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+A copy of the license is available at :
+<P>
+<B><A HREF="http://www.gnu.org/copyleft/lesser.html">http://www.gnu.org/copyleft/lesser.html</A></B>
+
+<P>
+<A NAME="lbAH">&nbsp;</A>
+<H2>AUTHOR</H2>
+
+Developed by Davide Libenzi
+&lt;<B><A HREF="mailto:davidel@xmailserver.org">davidel@xmailserver.org</A></B>&gt;
+
+<P>
+<A NAME="lbAI">&nbsp;</A>
+<H2>AVAILABILITY</H2>
+
+The latest version of
+<B>XFA</B>
+
+can be found at :
+<P>
+<B><A HREF="http://www.xmailserver.org/xfa-lib.html">http://www.xmailserver.org/xfa-lib.html</A></B>
+
+<P>
+<A NAME="lbAJ">&nbsp;</A>
+<H2>BUGS</H2>
+
+There are no known bugs.  Bug reports and comments to Davide Libenzi
+&lt;<B><A HREF="mailto:davidel@xmailserver.org">davidel@xmailserver.org</A></B>&gt;
+
+<P>
+<P>
+
+<HR>
+<A NAME="index">&nbsp;</A><H2>Index</H2>
+<DL>
+<DT><A HREF="#lbAB">NAME</A><DD>
+<DT><A HREF="#lbAC">SYNOPSIS</A><DD>
+<DT><A HREF="#lbAD">DESCRIPTION</A><DD>
+<DL>
+<DT><A HREF="#lbAE">Structures</A><DD>
+<DT><A HREF="#lbAF">Functions</A><DD>
+</DL>
+<DT><A HREF="#lbAG">LICENSE</A><DD>
+<DT><A HREF="#lbAH">AUTHOR</A><DD>
+<DT><A HREF="#lbAI">AVAILABILITY</A><DD>
+<DT><A HREF="#lbAJ">BUGS</A><DD>
+</DL>
+<HR>
+This document was created by
+<A HREF="/cgi-bin/man/man2html">man2html</A>,
+using the manual pages.<BR>
+Time: 21:58:15 GMT, January 07, 2009
+</BODY>
+</HTML>
